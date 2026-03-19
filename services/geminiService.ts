@@ -3,10 +3,19 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ProfileAnalysis } from "../types";
 
 export class GeminiService {
-  // Initialize GoogleGenAI strictly using process.env.API_KEY as per guidelines
-  private static ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  static async analyzeAndSearch(profileUrl: string, excludeUrls: string[] = [], enabledPlatforms: string[] = []): Promise<ProfileAnalysis> {
+    // Create a new instance right before making the call to use the latest selected API key
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const exclusionList = excludeUrls.length > 0 
+      ? `\n      CRITICAL: DO NOT suggest any of the following URLs (they have already been shown):
+      ${excludeUrls.join('\n      ')}`
+      : '';
 
-  static async analyzeAndSearch(profileUrl: string): Promise<ProfileAnalysis> {
+    const platformsToSearch = enabledPlatforms.length > 0 
+      ? enabledPlatforms.join(', ')
+      : 'LinkedIn, X (Twitter), Threads, Instagram, Facebook, Reddit, Discord, Bluesky, Mastodon, TikTok, YouTube, GitHub, Behance, Dribbble, Pinterest, Medium, Substack, Quora, Twitch, Tumblr';
+
     const prompt = `
       Analyze this social media profile URL: ${profileUrl}.
       
@@ -17,14 +26,18 @@ export class GeminiService {
       - Complementary Partners: People who provide services or skillsets that perfectly balance the subject (e.g., if they are a coder, find designers; if they are a chef, find food photographers).
       
       Step 3: Use Google Search to find exactly 25 REAL, ACTIVE social media profiles. 
-      You must source these from across these 10 platforms: 
-      1. LinkedIn, 2. X (Twitter), 3. Instagram, 4. GitHub, 5. YouTube, 6. TikTok, 7. Medium, 8. Reddit, 9. Pinterest, 10. Facebook or Behance.
+      You must source these EXCLUSIVELY from across these platforms: 
+      ${platformsToSearch}
       
       CRITICAL URL VERIFICATION RULES:
       - YOU MUST PROVIDE 25 UNIQUE SUGGESTIONS.
       - Every single URL must be a direct link to a profile, verified via search grounding.
-      - DO NOT hallucinate URLs. If a profile's direct URL cannot be verified, find a different person.
-      - Ensure a healthy mix across all 10 platforms.
+      - DO NOT hallucinate URLs. If a profile's direct URL cannot be verified as LIVE and WORKING, find a different person.
+      - NO DEAD END LINKS. If the profile appears inactive or the URL returns a 404 in your search context, skip it.
+      - Ensure a healthy mix across the top 20 allowed platforms.
+      ${exclusionList}
+      - NEVER repeat a profile that was in the exclusion list above.
+      - Ensure the 25 suggestions are completely different from any previous set.
       
       Return a JSON object with:
       1. originalProfile: { name: string, niche: string, description: string }
@@ -40,9 +53,9 @@ export class GeminiService {
     `;
 
     try {
-      // Using gemini-3-pro-preview for maximum reasoning capability to handle 25 complex objects
-      const response = await this.ai.models.generateContent({
-        model: "gemini-3-pro-preview",
+      // Using gemini-3.1-pro-preview for maximum reasoning capability to handle 25 complex objects
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-pro-preview",
         contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
@@ -105,11 +118,42 @@ export class GeminiService {
           uri: chunk.web.uri,
         }));
 
-      // Filter invalid URLs just in case
+      // Filter invalid or suspicious URLs
       if (data.suggestions) {
-        data.suggestions = data.suggestions.filter((s: any) => 
-          s.url && (s.url.startsWith('http://') || s.url.startsWith('https://'))
-        );
+        data.suggestions = data.suggestions.filter((s: any) => {
+          if (!s.url) return false;
+          try {
+            const urlObj = new URL(s.url);
+            // Basic check for valid protocol and hostname
+            if (!['http:', 'https:'].includes(urlObj.protocol)) return false;
+            if (urlObj.hostname.length < 4) return false;
+            
+            // Check for common social media domains to ensure it's a profile link
+            const validDomains = [
+              'linkedin.com', 'twitter.com', 'x.com', 'instagram.com', 'github.com', 
+              'stackoverflow.com', 'youtube.com', 'tiktok.com', 'medium.com', 
+              'substack.com', 'reddit.com', 'quora.com', 'producthunt.com', 
+              'crunchbase.com', 'wellfound.com', 'polywork.com', 'contra.com', 
+              'upwork.com', 'behance.net', 'dribbble.com', 'pinterest.com', 
+              'facebook.com', 'discord.com', 'bluesky.social', 'mastodon.social',
+              'threads.net'
+            ];
+            
+            const isSocialDomain = validDomains.some(domain => urlObj.hostname.includes(domain));
+            // We allow other domains too, but we want to be strict about the URL being a profile
+            // If it's just a homepage, it might be a "dead end" in terms of profile discovery
+            if (urlObj.pathname === '/' || urlObj.pathname === '') {
+              // Some platforms use subdomains for profiles (e.g. substack)
+              if (!s.url.includes('substack.com') && !s.url.includes('medium.com')) {
+                return false; 
+              }
+            }
+
+            return true;
+          } catch (e) {
+            return false;
+          }
+        });
       }
 
       return {

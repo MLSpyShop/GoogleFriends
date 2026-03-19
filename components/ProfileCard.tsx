@@ -4,22 +4,34 @@ import { SocialProfile } from '../types';
 import { 
   ExternalLink, User, Linkedin, Twitter, Github, Instagram, 
   Youtube, Share2, Award, CheckCircle, MessageSquare, 
-  Music, BookOpen, PenTool, Hash, Facebook
+  Music, BookOpen, PenTool, Hash, Facebook, Dribbble,
+  Code, Mail, HelpCircle, Rocket, Briefcase, Layers,
+  FileText, Cloud, AtSign, Zap, Globe
 } from 'lucide-react';
 
 const PlatformIcon = ({ platform }: { platform: string }) => {
   const p = platform.toLowerCase();
   if (p.includes('linkedin')) return <Linkedin className="w-5 h-5 text-[#0A66C2]" />;
   if (p.includes('twitter') || p.includes('x')) return <Twitter className="w-5 h-5 text-gray-200" />;
+  if (p.includes('threads')) return <AtSign className="w-5 h-5 text-white" />;
   if (p.includes('github')) return <Github className="w-5 h-5 text-gray-300" />;
   if (p.includes('instagram')) return <Instagram className="w-5 h-5 text-[#E4405F]" />;
   if (p.includes('youtube')) return <Youtube className="w-5 h-5 text-[#FF0000]" />;
   if (p.includes('tiktok')) return <Music className="w-5 h-5 text-[#00f2ea]" />;
   if (p.includes('reddit')) return <MessageSquare className="w-5 h-5 text-[#FF4500]" />;
+  if (p.includes('quora')) return <HelpCircle className="w-5 h-5 text-[#B92B27]" />;
   if (p.includes('medium')) return <BookOpen className="w-5 h-5 text-white" />;
+  if (p.includes('substack')) return <Mail className="w-5 h-5 text-[#FF6719]" />;
+  if (p.includes('behance')) return <Facebook className="w-5 h-5 text-[#053EFF]" />;
+  if (p.includes('dribbble')) return <Dribbble className="w-5 h-5 text-[#EA4C89]" />;
   if (p.includes('pinterest')) return <Hash className="w-5 h-5 text-[#BD081C]" />;
-  if (p.includes('facebook') || p.includes('behance')) return <Facebook className="w-5 h-5 text-[#1877F2]" />;
-  return <User className="w-5 h-5 text-purple-400" />;
+  if (p.includes('facebook')) return <Facebook className="w-5 h-5 text-[#1877F2]" />;
+  if (p.includes('discord')) return <MessageSquare className="w-5 h-5 text-[#5865F2]" />;
+  if (p.includes('bluesky')) return <Cloud className="w-5 h-5 text-[#0085FF]" />;
+  if (p.includes('mastodon')) return <Share2 className="w-5 h-5 text-[#6364FF]" />;
+  if (p.includes('twitch')) return <Zap className="w-5 h-5 text-[#9146FF]" />;
+  if (p.includes('tumblr')) return <Hash className="w-5 h-5 text-[#35465c]" />;
+  return <Globe className="w-5 h-5 text-purple-400" />;
 };
 
 interface ProfileCardProps {

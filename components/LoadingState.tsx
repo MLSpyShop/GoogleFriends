@@ -5,9 +5,10 @@ import Logo from './Logo';
 
 const messages = [
   "Initializing Google Search index...",
-  "Querying 10 global social platforms...",
+  "Querying 20 social-first platforms...",
   "Analyzing profile synergy via Gemini...",
   "Generating 25 verified profile matches...",
+  "Verifying each URL is live and working...",
   "Cross-referencing URLs with search grounding...",
   "Synthesizing your social galaxy...",
   "Applying Google AI refinement...",

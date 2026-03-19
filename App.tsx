@@ -1,31 +1,89 @@
 
 import React, { useState } from 'react';
-import { Search, Shield, Zap, Globe, Github, Info, AlertCircle, RefreshCw, ChevronRight, Sparkles, Layers, Twitter } from 'lucide-react';
+import { Search, Shield, Zap, Globe, Github, Info, AlertCircle, RefreshCw, ChevronRight, Sparkles, Layers, Twitter, Settings, Check, X as CloseIcon } from 'lucide-react';
 import { GeminiService } from './services/geminiService';
-import { SearchState } from './types';
+import { SearchState, Platform } from './types';
 import ProfileCard from './components/ProfileCard';
 import LoadingState from './components/LoadingState';
 import Logo from './components/Logo';
 
+const ALL_PLATFORMS: Platform[] = [
+  'LinkedIn', 'X', 'Instagram', 'GitHub', 'YouTube', 
+  'TikTok', 'Medium', 'Reddit', 'Pinterest', 'Facebook', 
+  'Behance', 'Dribbble', 'Product Hunt', 'Crunchbase', 
+  'Wellfound', 'Stack Overflow', 'Substack', 'Polywork', 
+  'Contra', 'Upwork', 'Threads', 'Bluesky', 'Mastodon', 
+  'Quora', 'Discord', 'Twitch', 'Tumblr'
+];
+
 const App: React.FC = () => {
   const [url, setUrl] = useState('');
+  const [seenUrls, setSeenUrls] = useState<string[]>([]);
+  const [enabledPlatforms, setEnabledPlatforms] = useState<Platform[]>(ALL_PLATFORMS);
+  const [showSettings, setShowSettings] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [state, setState] = useState<SearchState>({
     loading: false,
     error: null,
     results: null
   });
 
-  const handleSearch = async (e?: React.FormEvent) => {
+  React.useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio?.hasSelectedApiKey) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(hasKey);
+      } else {
+        // Fallback for environments where the API might not be present yet
+        setHasApiKey(true);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleSelectKey = async () => {
+    if (window.aistudio?.openSelectKey) {
+      await window.aistudio.openSelectKey();
+      setHasApiKey(true);
+    }
+  };
+
+  const handleSearch = async (e?: React.FormEvent, isRefresh = false) => {
     if (e) e.preventDefault();
     if (!url.trim()) return;
 
-    setState({ loading: true, error: null, results: null });
+    setState(prev => ({ ...prev, loading: true, error: null }));
     try {
-      const data = await GeminiService.analyzeAndSearch(url);
+      const data = await GeminiService.analyzeAndSearch(url, seenUrls, enabledPlatforms);
+      
+      // Update seen URLs with the new suggestions
+      const newUrls = data.suggestions.map(s => s.url);
+      setSeenUrls(prev => [...new Set([...prev, ...newUrls])]);
+      
       setState({ loading: false, error: null, results: data });
+      
+      // Scroll to results if refreshing
+      if (isRefresh) {
+        setTimeout(() => {
+          document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      }
     } catch (err: any) {
-      setState({ loading: false, error: err.message, results: null });
+      if (err.message?.includes('Requested entity was not found')) {
+        setHasApiKey(false);
+        setState({ loading: false, error: 'Your API key is invalid or has expired. Please select a new one.', results: null });
+      } else {
+        setState({ loading: false, error: err.message, results: null });
+      }
     }
+  };
+
+  const togglePlatform = (platform: Platform) => {
+    setEnabledPlatforms(prev => 
+      prev.includes(platform) 
+        ? prev.filter(p => p !== platform)
+        : [...prev, platform]
+    );
   };
 
   return (
@@ -35,6 +93,41 @@ const App: React.FC = () => {
       <div className="fixed top-40 -right-4 w-[500px] h-[500px] bg-red-600 rounded-full mix-blend-multiply filter blur-[120px] opacity-10 animate-blob animation-delay-2000"></div>
       <div className="fixed -bottom-40 left-40 w-[600px] h-[600px] bg-green-600 rounded-full mix-blend-multiply filter blur-[120px] opacity-10 animate-blob animation-delay-4000"></div>
 
+      {/* API Key Lock Screen */}
+      {hasApiKey === false && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-xl p-6">
+          <div className="max-w-md w-full glass p-10 rounded-[40px] border-white/10 text-center relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 blur-[60px] -mr-16 -mt-16"></div>
+            <div className="relative">
+              <div className="w-20 h-20 bg-blue-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-blue-500/20">
+                <Shield className="w-10 h-10 text-blue-500" />
+              </div>
+              <h2 className="text-3xl font-black tracking-tighter mb-4 uppercase italic">Access Restricted</h2>
+              <p className="text-gray-400 text-sm leading-relaxed mb-8">
+                To ensure security and prevent unauthorized usage of admin resources, you must connect your own Gemini API key to use the Social Synergy Engine.
+              </p>
+              <div className="space-y-4">
+                <button 
+                  onClick={handleSelectKey}
+                  className="w-full py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-[0.3em] transition-all shadow-xl shadow-blue-600/30 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3"
+                >
+                  <Zap className="w-4 h-4" />
+                  Connect API Key
+                </button>
+                <a 
+                  href="https://ai.google.dev/gemini-api/docs/billing" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block text-[10px] font-bold text-gray-500 hover:text-blue-400 uppercase tracking-widest transition-colors"
+                >
+                  Learn about Gemini Billing & Keys
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <nav className="sticky top-0 z-50 glass border-b border-white/5 py-3 px-6">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
@@ -43,7 +136,7 @@ const App: React.FC = () => {
             <span className="text-white">Google <span className="text-[#4285F4]">Friends</span></span>
           </div>
           <div className="hidden md:flex items-center gap-8 text-xs font-bold uppercase tracking-widest text-gray-500">
-            <a href="#" className="hover:text-blue-400 transition-colors">10 Platforms</a>
+            <a href="#" className="hover:text-blue-400 transition-colors">20 Platforms</a>
             <a href="#" className="hover:text-blue-400 transition-colors">25 Matches</a>
             <a href="#" className="hover:text-blue-400 transition-colors">Gemini API</a>
           </div>
@@ -54,6 +147,77 @@ const App: React.FC = () => {
           </div>
         </div>
       </nav>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 md:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="glass max-w-5xl w-full p-6 md:p-10 rounded-[40px] border-white/10 shadow-2xl relative overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 blur-[100px] -mr-32 -mt-32"></div>
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/10 blur-[100px] -ml-32 -mb-32"></div>
+            
+            <div className="flex justify-between items-center mb-8 relative shrink-0">
+              <div>
+                <h3 className="text-3xl font-black tracking-tighter uppercase italic">Platform Filter</h3>
+                <p className="text-gray-500 text-xs font-bold uppercase tracking-[0.3em] mt-1">Select networks to include in your synergy search</p>
+              </div>
+              <button 
+                onClick={() => setShowSettings(false)}
+                className="p-3 hover:bg-white/10 rounded-full transition-all hover:rotate-90 duration-300 border border-white/5"
+              >
+                <CloseIcon className="w-6 h-6 text-gray-400" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar mb-8 relative">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                {ALL_PLATFORMS.map(platform => (
+                  <button
+                    key={platform}
+                    onClick={() => togglePlatform(platform)}
+                    className={`flex items-center justify-between px-4 py-3 rounded-2xl border transition-all duration-300 group ${
+                      enabledPlatforms.includes(platform)
+                        ? 'bg-blue-500/10 border-blue-500/40 text-white shadow-[0_0_20px_-5px_rgba(59,130,246,0.3)]'
+                        : 'bg-white/5 border-white/5 text-gray-600 grayscale opacity-40 hover:opacity-60'
+                    }`}
+                  >
+                    <span className="text-[10px] font-black uppercase tracking-widest truncate mr-2">{platform}</span>
+                    <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${
+                      enabledPlatforms.includes(platform) ? 'bg-blue-500' : 'bg-gray-800'
+                    }`}>
+                      <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all duration-300 ${
+                        enabledPlatforms.includes(platform) ? 'left-4.5' : 'left-0.5'
+                      }`} />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-4 relative shrink-0 pt-4 border-t border-white/5">
+              <div className="flex-1 flex gap-3">
+                <button 
+                  onClick={() => setEnabledPlatforms(ALL_PLATFORMS)}
+                  className="flex-1 py-4 bg-white/5 hover:bg-white/10 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all border border-white/5"
+                >
+                  Select All
+                </button>
+                <button 
+                  onClick={() => setEnabledPlatforms([])}
+                  className="flex-1 py-4 bg-white/5 hover:bg-white/10 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all border border-white/5"
+                >
+                  Clear All
+                </button>
+              </div>
+              <button 
+                onClick={() => setShowSettings(false)}
+                className="sm:w-64 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-xl shadow-blue-600/30 hover:scale-[1.02] active:scale-95"
+              >
+                Apply Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-7xl mx-auto px-6 pt-16">
         {/* Hero Section */}
@@ -72,7 +236,20 @@ const App: React.FC = () => {
             Paste one social link. Discover 25 verified peers and collaborators using Google Search and Gemini Intelligence.
           </p>
 
-          <form onSubmit={handleSearch} className="max-w-3xl mx-auto relative group">
+          <div className="flex flex-col items-center gap-6 mb-12">
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="group relative flex items-center gap-4 px-12 py-6 bg-white/5 hover:bg-white/10 border-2 border-blue-500/30 rounded-[24px] transition-all duration-500 hover:scale-110 active:scale-95 shadow-[0_0_50px_-12px_rgba(59,130,246,0.3)]"
+            >
+              <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 rounded-[24px] blur opacity-20 group-hover:opacity-40 transition duration-500 animate-pulse"></div>
+              <Settings className="w-6 h-6 text-blue-400 group-hover:rotate-180 transition-transform duration-700" />
+              <span className="text-lg font-black uppercase tracking-[0.5em] text-white">Settings</span>
+              <div className="flex items-center gap-2 ml-4 px-3 py-1 bg-blue-500/20 rounded-full border border-blue-500/30">
+                <span className="text-xs font-black text-blue-400">{enabledPlatforms.length} Active</span>
+              </div>
+            </button>
+
+            <form onSubmit={handleSearch} className="w-full max-w-3xl relative group mb-8">
             <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-red-500 to-green-600 rounded-2xl blur opacity-20 group-focus-within:opacity-60 transition duration-700"></div>
             <div className="relative flex flex-col md:flex-row gap-2 p-2 glass rounded-2xl border border-white/10">
               <div className="flex-1 flex items-center px-4 gap-3">
@@ -95,7 +272,56 @@ const App: React.FC = () => {
               </button>
             </div>
           </form>
-        </section>
+
+          {/* Quick Platform Toggles */}
+          <div className="w-full max-w-5xl mx-auto relative group/filters">
+            <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-[#030712] to-transparent z-10 pointer-events-none opacity-0 group-hover/filters:opacity-100 transition-opacity"></div>
+            <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-[#030712] to-transparent z-10 pointer-events-none opacity-0 group-hover/filters:opacity-100 transition-opacity"></div>
+            
+            <div className="overflow-x-auto no-scrollbar pb-4 px-4">
+              <div className="flex items-center gap-2 min-w-max">
+                <div className="flex items-center gap-1 mr-4 pr-4 border-r border-white/10">
+                  <button 
+                    onClick={() => setEnabledPlatforms(ALL_PLATFORMS)}
+                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[8px] font-black uppercase tracking-widest text-gray-400 hover:text-white transition-all border border-white/5"
+                  >
+                    All
+                  </button>
+                  <button 
+                    onClick={() => setEnabledPlatforms([])}
+                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[8px] font-black uppercase tracking-widest text-gray-400 hover:text-white transition-all border border-white/5"
+                  >
+                    None
+                  </button>
+                </div>
+
+                {ALL_PLATFORMS.map(platform => (
+                  <button
+                    key={platform}
+                    onClick={() => togglePlatform(platform)}
+                    className={`px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${
+                      enabledPlatforms.includes(platform)
+                        ? 'bg-blue-500/20 border-blue-500/40 text-blue-400 shadow-[0_0_15px_-5px_rgba(59,130,246,0.3)]'
+                        : 'bg-white/5 border-white/5 text-gray-600 hover:bg-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    {platform}
+                    {enabledPlatforms.includes(platform) && <div className="w-1 h-1 rounded-full bg-blue-400 animate-pulse" />}
+                  </button>
+                ))}
+                
+                <button 
+                  onClick={() => setShowSettings(true)}
+                  className="ml-2 p-2.5 bg-blue-500/10 hover:bg-blue-500/20 rounded-full border border-blue-500/20 text-blue-400 hover:text-blue-300 transition-all group/btn"
+                  title="Advanced Settings"
+                >
+                  <Settings className="w-4 h-4 group-hover/btn:rotate-90 transition-transform duration-500" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
         {/* Status Area */}
         {state.loading && <LoadingState />}
@@ -126,7 +352,7 @@ const App: React.FC = () => {
                       Discovery Node
                     </span>
                     <span className="text-gray-600 text-[10px] font-bold uppercase tracking-widest">
-                      Mapping 25 Verified Friends
+                      Mapping 25 Verified Live Profiles
                     </span>
                   </div>
                   <h2 className="text-5xl font-black mb-4 tracking-tighter">{state.results.originalProfile.name}</h2>
@@ -138,7 +364,7 @@ const App: React.FC = () => {
                 <div className="w-full md:w-auto p-6 glass rounded-2xl border-white/5 bg-white/[0.01]">
                    <div className="grid grid-cols-2 gap-4 text-center">
                      <div>
-                       <div className="text-2xl font-black text-white">10</div>
+                       <div className="text-2xl font-black text-white">20</div>
                        <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Platforms</div>
                      </div>
                      <div>
@@ -152,11 +378,19 @@ const App: React.FC = () => {
 
             {/* Suggestions Grid */}
             <div id="results">
-              <div className="flex items-center justify-between mb-10">
+              <div className="flex flex-col md:flex-row items-center justify-between mb-10 gap-6">
                 <h3 className="text-3xl font-black flex items-center gap-3 tracking-tighter">
                   <Zap className="w-8 h-8 text-blue-500" />
                   Synergistic Connections
                 </h3>
+                <button 
+                  onClick={() => handleSearch(undefined, true)}
+                  disabled={state.loading}
+                  className="flex items-center gap-2 px-6 py-3 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/20 transition-all font-bold text-xs uppercase tracking-widest disabled:opacity-50"
+                >
+                  {state.loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Find 25 More
+                </button>
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -215,8 +449,8 @@ const App: React.FC = () => {
               },
               { 
                 icon: <Globe className="w-8 h-8 text-red-500" />, 
-                title: "10 Platforms", 
-                desc: "Discovery happens across LinkedIn, X, Instagram, GitHub, YouTube, and five other major networks." 
+                title: "20 Platforms", 
+                desc: "Discovery happens across LinkedIn, X, Instagram, Facebook, Reddit, Discord, and 14 other major social networks." 
               },
               { 
                 icon: <Sparkles className="w-8 h-8 text-green-500" />, 
